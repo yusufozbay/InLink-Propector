@@ -23,8 +23,8 @@ An intelligent internal linking tool that crawls your website and uses AI to sug
 
 1. Clone the repository:
 ```bash
-git clone https://github.com/yusufozbay/InLink-Propector.git
-cd InLink-Propector
+git clone https://github.com/yusufozbay/InLink-Prospector.git
+cd InLink-Prospector
 ```
 
 2. Install dependencies:

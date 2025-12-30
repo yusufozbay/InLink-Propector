@@ -6,7 +6,6 @@ import unittest
 from crawler import WebCrawler
 from analyzer import LinkAnalyzer
 import pandas as pd
-from unittest.mock import Mock, patch
 import os
 
 

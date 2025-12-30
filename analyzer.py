@@ -8,6 +8,7 @@ from openai import OpenAI
 import os
 from typing import List, Dict
 import json
+import re
 import time
 
 
@@ -140,7 +141,6 @@ Return ONLY the JSON array, no additional text."""
                 suggestions_data = json.loads(response_text)
             except json.JSONDecodeError:
                 # Try to find JSON in the response
-                import re
                 json_match = re.search(r'\[.*\]', response_text, re.DOTALL)
                 if json_match:
                     suggestions_data = json.loads(json_match.group())

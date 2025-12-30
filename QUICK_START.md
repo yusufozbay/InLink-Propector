@@ -4,8 +4,8 @@
 
 ```bash
 # Clone the repository
-git clone https://github.com/yusufozbay/InLink-Propector.git
-cd InLink-Propector
+git clone https://github.com/yusufozbay/InLink-Prospector.git
+cd InLink-Prospector
 
 # Install dependencies
 pip install -r requirements.txt
