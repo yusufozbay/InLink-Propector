@@ -31,13 +31,16 @@ class LinkAnalyzer:
         self.client = genai.Client(api_key=self.api_key)
         self.model_name = model_name
     
-    def generate_link_suggestions(self, df: pd.DataFrame, max_suggestions_per_page: int = 5) -> pd.DataFrame:
+    def generate_link_suggestions(self, df: pd.DataFrame, max_suggestions_per_page: int = 5, 
+                                  progress_callback=None, status_check_callback=None) -> pd.DataFrame:
         """
         Generate internal link suggestions for pages
         
         Args:
             df: DataFrame with data (URL, H1, Meta Title, Content)
             max_suggestions_per_page: Maximum number of link suggestions per source page
+            progress_callback: Optional callback function to report progress (page_index, total_pages)
+            status_check_callback: Optional callback function that returns tuple (should_pause, should_stop)
             
         Returns:
             DataFrame with columns: Source URL, Anchor Text, Target URL
@@ -53,8 +56,28 @@ class LinkAnalyzer:
                 'content_preview': row['Content'][:200]
             })
         
+        total_pages = len(df)
+        
         # Analyze each page
         for idx, source_row in df.iterrows():
+            # Check if we should pause or stop
+            if status_check_callback:
+                should_pause, should_stop = status_check_callback()
+                
+                if should_stop:
+                    # Stop processing immediately
+                    break
+                
+                # Wait while paused
+                while should_pause:
+                    time.sleep(0.5)
+                    should_pause, should_stop = status_check_callback()
+                    if should_stop:
+                        break
+                
+                if should_stop:
+                    break
+            
             source_url = source_row['URL']
             source_title = source_row['Meta Title'] or source_row['H1']
             source_content = source_row['Content']
@@ -69,6 +92,10 @@ class LinkAnalyzer:
             )
             
             suggestions.extend(page_suggestions)
+            
+            # Report progress if callback provided
+            if progress_callback:
+                progress_callback(idx + 1, total_pages)
             
             # Add delay to avoid rate limits
             time.sleep(0.5)

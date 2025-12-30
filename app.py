@@ -55,6 +55,16 @@ if 'link_suggestions' not in st.session_state:
     st.session_state.link_suggestions = None
 if 'data_loaded' not in st.session_state:
     st.session_state.data_loaded = False
+if 'is_paused' not in st.session_state:
+    st.session_state.is_paused = False
+if 'should_stop' not in st.session_state:
+    st.session_state.should_stop = False
+if 'is_processing' not in st.session_state:
+    st.session_state.is_processing = False
+if 'partial_results' not in st.session_state:
+    st.session_state.partial_results = None
+if 'current_progress' not in st.session_state:
+    st.session_state.current_progress = 0
 
 # Sidebar for configuration
 st.sidebar.header("⚙️ Configuration")
@@ -175,53 +185,183 @@ with tab2:
             help="Maximum number of link suggestions to generate for each page"
         )
         
-        if st.button("🤖 Generate Link Suggestions", type="primary"):
-            if not api_key:
-                st.error("⚠️ Please enter your Google API Key in the sidebar")
+        # Control buttons in columns
+        col1, col2, col3 = st.columns([1.5, 1, 1])
+        
+        with col1:
+            if not st.session_state.is_processing:
+                if st.button("🤖 Generate Link Suggestions", type="primary"):
+                    if not api_key:
+                        st.error("⚠️ Please enter your Google API Key in the sidebar")
+                    else:
+                        st.session_state.is_processing = True
+                        st.session_state.is_paused = False
+                        st.session_state.should_stop = False
+                        st.session_state.partial_results = None
+                        st.session_state.current_progress = 0
+                        st.rerun()
+        
+        with col2:
+            if st.session_state.is_processing:
+                if st.session_state.is_paused:
+                    if st.button("▶️ Resume"):
+                        st.session_state.is_paused = False
+                        st.rerun()
+                else:
+                    if st.button("⏸️ Pause"):
+                        st.session_state.is_paused = True
+                        st.rerun()
+        
+        with col3:
+            if st.session_state.is_processing:
+                if st.button("⏹️ Stop"):
+                    st.session_state.should_stop = True
+                    st.rerun()
+        
+        # Show current status
+        if st.session_state.is_processing:
+            if st.session_state.is_paused:
+                st.warning("⏸️ Processing is paused. Click 'Resume' to continue or 'Stop' to end.")
             else:
-                try:
-                    with st.spinner("Analyzing content and generating suggestions... This may take several minutes."):
-                        # Progress indicator
-                        progress_bar = st.progress(0)
-                        status_text = st.empty()
-                        
-                        total_pages = len(st.session_state.uploaded_data)
-                        
-                        # Create analyzer
-                        analyzer = LinkAnalyzer(api_key=api_key, model_name=model_choice)
-                        
-                        # Generate suggestions
-                        status_text.text(f"Processing {total_pages} pages with {model_choice}...")
-                        suggestions_df = analyzer.generate_link_suggestions(
-                            st.session_state.uploaded_data,
-                            max_suggestions_per_page=suggestions_per_page
-                        )
-                        progress_bar.progress(1.0)
-                        
+                st.info("🔄 Processing in progress...")
+        
+        # Show partial results download when paused or stopped
+        if st.session_state.partial_results is not None and len(st.session_state.partial_results) > 0:
+            total_pages = len(st.session_state.uploaded_data)
+            st.info(f"📊 Partial results: {len(st.session_state.partial_results)} suggestions from {st.session_state.current_progress}/{total_pages} pages")
+            
+            # Show preview
+            st.subheader("Partial Results Preview")
+            st.dataframe(st.session_state.partial_results.head(20), use_container_width=True)
+            
+            # Download button for partial results
+            partial_csv = st.session_state.partial_results.to_csv(index=False).encode('utf-8')
+            st.download_button(
+                label="📥 Download Partial Results (CSV)",
+                data=partial_csv,
+                file_name="link_suggestions_partial.csv",
+                mime="text/csv",
+                key="partial_download_btn"
+            )
+        
+        # Process if we're in processing state and not stopped
+        if st.session_state.is_processing and not st.session_state.should_stop:
+            try:
+                # Progress indicators
+                progress_bar = st.progress(st.session_state.current_progress / max(1, len(st.session_state.uploaded_data)))
+                status_text = st.empty()
+                
+                total_pages = len(st.session_state.uploaded_data)
+                
+                # Create analyzer
+                analyzer = LinkAnalyzer(api_key=api_key, model_name=model_choice)
+                
+                # Track suggestions
+                all_suggestions = []
+                
+                # Progress callback
+                def update_progress(current, total):
+                    st.session_state.current_progress = current
+                    progress_bar.progress(current / total)
+                    status_text.text(f"Processing page {current} of {total}... (Click 'Pause' or 'Stop' to interrupt)")
+                
+                # Status check callback
+                def check_status():
+                    return (st.session_state.is_paused, st.session_state.should_stop)
+                
+                # Wrap _analyze_page to collect results
+                original_analyze_page = analyzer._analyze_page
+                
+                def wrapped_analyze_page(*args, **kwargs):
+                    result = original_analyze_page(*args, **kwargs)
+                    all_suggestions.extend(result)
+                    # Update partial results
+                    if len(all_suggestions) > 0:
+                        st.session_state.partial_results = pd.DataFrame(all_suggestions)
+                    return result
+                
+                analyzer._analyze_page = wrapped_analyze_page
+                
+                # Generate suggestions
+                status_text.text(f"Starting to process {total_pages} pages with {model_choice}...")
+                suggestions_df = analyzer.generate_link_suggestions(
+                    st.session_state.uploaded_data,
+                    max_suggestions_per_page=suggestions_per_page,
+                    progress_callback=update_progress,
+                    status_check_callback=check_status
+                )
+                
+                # Mark processing as complete
+                st.session_state.is_processing = False
+                
+                if st.session_state.should_stop:
+                    # Processing was stopped by user
+                    st.warning(f"⏹️ Processing stopped by user. Generated {len(suggestions_df)} link suggestions from {st.session_state.current_progress} of {total_pages} pages.")
+                    
+                    if len(suggestions_df) > 0:
                         # Save to session state
                         st.session_state.link_suggestions = suggestions_df
+                        st.session_state.partial_results = suggestions_df
                         
                         # Save to CSV
-                        filename = analyzer.save_to_csv(suggestions_df)
+                        filename = analyzer.save_to_csv(suggestions_df, 'link_suggestions_partial.csv')
                         
-                        st.success(f"✅ Generated {len(suggestions_df)} link suggestions!")
-                        st.balloons()
+                        st.success(f"✅ Partial results saved!")
                         
                         # Show preview
-                        st.subheader("Link Suggestions Preview")
+                        st.subheader("Link Suggestions (Partial)")
                         st.dataframe(suggestions_df.head(20), use_container_width=True)
                         
                         # Download button
                         csv = suggestions_df.to_csv(index=False).encode('utf-8')
                         st.download_button(
-                            label="📥 Download Link Suggestions (CSV)",
+                            label="📥 Download Partial Results (CSV)",
                             data=csv,
                             file_name=filename,
-                            mime="text/csv"
+                            mime="text/csv",
+                            key="stopped_final_download"
                         )
-                        
-                except Exception as e:
-                    st.error(f"Error generating suggestions: {str(e)}")
+                    else:
+                        st.info("No suggestions were generated before stopping.")
+                else:
+                    # Processing completed normally
+                    progress_bar.progress(1.0)
+                    status_text.text("✅ Processing complete!")
+                    
+                    # Save to session state
+                    st.session_state.link_suggestions = suggestions_df
+                    
+                    # Save to CSV
+                    filename = analyzer.save_to_csv(suggestions_df)
+                    
+                    st.success(f"✅ Generated {len(suggestions_df)} link suggestions!")
+                    st.balloons()
+                    
+                    # Show preview
+                    st.subheader("Link Suggestions Preview")
+                    st.dataframe(suggestions_df.head(20), use_container_width=True)
+                    
+                    # Download button
+                    csv = suggestions_df.to_csv(index=False).encode('utf-8')
+                    st.download_button(
+                        label="📥 Download Link Suggestions (CSV)",
+                        data=csv,
+                        file_name=filename,
+                        mime="text/csv",
+                        key="complete_final_download"
+                    )
+                
+                # Reset flags
+                st.session_state.should_stop = False
+                st.session_state.is_paused = False
+                
+            except Exception as e:
+                st.session_state.is_processing = False
+                st.session_state.should_stop = False
+                st.session_state.is_paused = False
+                st.error(f"Error generating suggestions: {str(e)}")
+                import traceback
+                st.error(traceback.format_exc())
 
 # Tab 3: Results and Analytics
 with tab3:
