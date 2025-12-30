@@ -11,6 +11,11 @@ An intelligent internal linking tool that uses Google Gemini AI to suggest relev
   - Target URL (where the link should point)
 - 📊 **CSV Export**: Export link suggestions to CSV files
 - 🎨 **Streamlit UI**: User-friendly web interface for the entire workflow
+- 🔄 **Background Job Processing**: Analysis runs in background even if you close the browser tab!
+  - Persistent job state saved to disk
+  - Resume analysis after closing and reopening the app
+  - Pause/Resume functionality across sessions
+  - Download partial results at any time
 
 ## Installation
 
@@ -52,8 +57,9 @@ This will open the app in your browser at `http://localhost:8501`
    - Enter your Google API key (in sidebar)
    - Select Gemini model (2.5 Pro or 3 Pro Preview)
    - Set max suggestions per page
-   - Click "Generate Link Suggestions"
-   - Wait for AI to analyze your content
+   - Click "Start New Analysis"
+   - Analysis runs in background - you can close the tab!
+   - Reopen later to check progress or download results
 
 3. **View Results** (Tab 3):
    - Review statistics
@@ -152,6 +158,26 @@ Available models:
    - Presents suggestions in table format
    - Exports to CSV for implementation
    - Provides analytics and statistics
+
+## Background Job Processing
+
+InLink-Prospector now features **persistent background job processing**! This means:
+
+- 🔄 **Analysis continues even if you close the browser tab**
+- 💾 **Job state and progress automatically saved to disk**
+- ⏸️ **Pause and resume analysis across different sessions**
+- 📊 **Download partial results at any time**
+- 📋 **Manage multiple analysis jobs simultaneously**
+
+### How to Use Background Jobs
+
+1. Start an analysis - it runs in a background thread
+2. Close your browser tab if needed
+3. Come back later and reopen the app
+4. Your job will still be running or paused where you left it
+5. Resume, stop, or download results at any time
+
+See [BACKGROUND_JOBS.md](BACKGROUND_JOBS.md) for detailed documentation.
 
 ## API Costs
 
