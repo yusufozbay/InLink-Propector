@@ -6,12 +6,18 @@ A Streamlit app for generating internal link suggestions using Google Gemini
 import streamlit as st
 import pandas as pd
 from analyzer import LinkAnalyzer
+from job_manager import JobManager, JobStatus
 import os
 from dotenv import load_dotenv
 import traceback
+import uuid
+import time
 
 # Load environment variables
 load_dotenv()
+
+# Initialize job manager
+job_manager = JobManager()
 
 # Page configuration
 st.set_page_config(
@@ -56,16 +62,10 @@ if 'link_suggestions' not in st.session_state:
     st.session_state.link_suggestions = None
 if 'data_loaded' not in st.session_state:
     st.session_state.data_loaded = False
-if 'is_paused' not in st.session_state:
-    st.session_state.is_paused = False
-if 'should_stop' not in st.session_state:
-    st.session_state.should_stop = False
-if 'is_processing' not in st.session_state:
-    st.session_state.is_processing = False
+if 'current_job_id' not in st.session_state:
+    st.session_state.current_job_id = None
 if 'partial_results' not in st.session_state:
     st.session_state.partial_results = None
-if 'current_progress' not in st.session_state:
-    st.session_state.current_progress = 0
 
 # Sidebar for configuration
 st.sidebar.header("⚙️ Configuration")
@@ -170,6 +170,8 @@ with tab2:
         <li>Anchor Text (exact match or semantically related)</li>
         <li>Target URL (where the link should point to)</li>
     </ul>
+    <br>
+    <b>🆕 Background Processing:</b> Analysis continues in background even if you close this tab!
     </div>
     """, unsafe_allow_html=True)
     
@@ -186,182 +188,159 @@ with tab2:
             help="Maximum number of link suggestions to generate for each page"
         )
         
-        # Control buttons in columns
-        col1, col2, col3 = st.columns([1.5, 1, 1])
+        # Check for existing/active jobs
+        current_job = None
+        if st.session_state.current_job_id:
+            current_job = job_manager.get_job(st.session_state.current_job_id)
+        
+        # Auto-refresh for active jobs
+        if current_job and current_job['status'] in [JobStatus.RUNNING.value, JobStatus.PAUSED.value]:
+            time.sleep(1)
+            st.rerun()
+        
+        # Control buttons
+        col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
         
         with col1:
-            if not st.session_state.is_processing:
-                if st.button("🤖 Generate Link Suggestions", type="primary"):
+            # Start new job button
+            if not current_job or current_job['status'] in [JobStatus.COMPLETED.value, JobStatus.FAILED.value, JobStatus.STOPPED.value]:
+                if st.button("🤖 Start New Analysis", type="primary"):
                     if not api_key:
                         st.error("⚠️ Please enter your Google API Key in the sidebar")
                     else:
-                        st.session_state.is_processing = True
-                        st.session_state.is_paused = False
-                        st.session_state.should_stop = False
-                        st.session_state.partial_results = None
-                        st.session_state.current_progress = 0
+                        # Create new job
+                        job_id = f"job_{uuid.uuid4().hex[:8]}"
+                        config = {
+                            'api_key': api_key,
+                            'model_name': model_choice,
+                            'max_suggestions_per_page': suggestions_per_page
+                        }
+                        job_manager.create_job(job_id, len(st.session_state.uploaded_data), config)
+                        st.session_state.current_job_id = job_id
+                        
+                        # Start background job
+                        analyzer = LinkAnalyzer(api_key=api_key, model_name=model_choice)
+                        job_manager.start_background_job(job_id, analyzer, st.session_state.uploaded_data)
+                        
                         st.rerun()
         
         with col2:
-            if st.session_state.is_processing:
-                if st.session_state.is_paused:
-                    if st.button("▶️ Resume"):
-                        st.session_state.is_paused = False
-                        st.rerun()
-                else:
-                    if st.button("⏸️ Pause"):
-                        st.session_state.is_paused = True
-                        st.rerun()
-        
-        with col3:
-            if st.session_state.is_processing:
-                if st.button("⏹️ Stop"):
-                    st.session_state.should_stop = True
+            # Pause/Resume button
+            if current_job and current_job['status'] == JobStatus.RUNNING.value:
+                if st.button("⏸️ Pause"):
+                    job_manager.pause_job(st.session_state.current_job_id)
+                    st.rerun()
+            elif current_job and current_job['status'] == JobStatus.PAUSED.value:
+                if st.button("▶️ Resume"):
+                    analyzer = LinkAnalyzer(api_key=api_key, model_name=model_choice)
+                    job_manager.resume_job(st.session_state.current_job_id, analyzer, st.session_state.uploaded_data)
                     st.rerun()
         
-        # Show current status
-        if st.session_state.is_processing:
-            if st.session_state.is_paused:
-                st.warning("⏸️ Processing is paused. Click 'Resume' to continue or 'Stop' to end.")
-            else:
-                st.info("🔄 Processing in progress...")
+        with col3:
+            # Stop button
+            if current_job and current_job['status'] in [JobStatus.RUNNING.value, JobStatus.PAUSED.value]:
+                if st.button("⏹️ Stop"):
+                    job_manager.stop_job(st.session_state.current_job_id)
+                    st.rerun()
         
-        # Show partial results download when paused or stopped
-        if st.session_state.partial_results is not None and len(st.session_state.partial_results) > 0:
-            total_pages = len(st.session_state.uploaded_data)
-            st.info(f"📊 Partial results: {len(st.session_state.partial_results)} suggestions from {st.session_state.current_progress}/{total_pages} pages")
-            
-            # Show preview
-            st.subheader("Partial Results Preview")
-            st.dataframe(st.session_state.partial_results.head(20), use_container_width=True)
-            
-            # Download button for partial results
-            partial_csv = st.session_state.partial_results.to_csv(index=False).encode('utf-8')
-            st.download_button(
-                label="📥 Download Partial Results (CSV)",
-                data=partial_csv,
-                file_name="link_suggestions_partial.csv",
-                mime="text/csv",
-                key="partial_download_btn"
-            )
+        with col4:
+            # Delete job button
+            if current_job and current_job['status'] in [JobStatus.COMPLETED.value, JobStatus.FAILED.value, JobStatus.STOPPED.value]:
+                if st.button("🗑️ Delete"):
+                    job_manager.delete_job(st.session_state.current_job_id)
+                    st.session_state.current_job_id = None
+                    st.session_state.partial_results = None
+                    st.rerun()
         
-        # Process if we're in processing state and not stopped
-        if st.session_state.is_processing and not st.session_state.should_stop:
-            try:
-                # Progress indicators
-                progress_bar = st.progress(st.session_state.current_progress / max(1, len(st.session_state.uploaded_data)))
-                status_text = st.empty()
+        # Show job status
+        if current_job:
+            status = current_job['status']
+            current_page = current_job.get('current_page', 0)
+            total_pages = current_job['total_pages']
+            
+            # Status message
+            if status == JobStatus.RUNNING.value:
+                st.info(f"🔄 Analysis in progress... ({current_page}/{total_pages} pages processed)")
+                # Show progress bar
+                progress = current_page / max(1, total_pages)
+                st.progress(progress)
+            elif status == JobStatus.PAUSED.value:
+                st.warning(f"⏸️ Analysis paused at page {current_page}/{total_pages}. Click 'Resume' to continue or close this tab - your progress is saved!")
+                st.progress(current_page / max(1, total_pages))
+            elif status == JobStatus.STOPPED.value:
+                st.warning(f"⏹️ Analysis stopped at page {current_page}/{total_pages}.")
+                st.progress(current_page / max(1, total_pages))
+            elif status == JobStatus.COMPLETED.value:
+                st.success(f"✅ Analysis complete! Processed all {total_pages} pages.")
+                st.balloons()
+            elif status == JobStatus.FAILED.value:
+                st.error(f"❌ Analysis failed: {current_job.get('error', 'Unknown error')}")
+            
+            # Show partial/final results
+            results_df = job_manager.load_partial_results(st.session_state.current_job_id)
+            if results_df is not None and len(results_df) > 0:
+                st.session_state.partial_results = results_df
                 
-                total_pages = len(st.session_state.uploaded_data)
+                # Update link_suggestions if job completed
+                if status == JobStatus.COMPLETED.value:
+                    st.session_state.link_suggestions = results_df
                 
-                # Create analyzer
-                analyzer = LinkAnalyzer(api_key=api_key, model_name=model_choice)
+                # Show results count
+                st.info(f"📊 Results: {len(results_df)} link suggestions generated")
                 
-                # Track suggestions
-                all_suggestions = []
+                # Show preview
+                results_label = "Final Results" if status == JobStatus.COMPLETED.value else "Partial Results"
+                st.subheader(f"{results_label} Preview")
+                st.dataframe(results_df.head(20), use_container_width=True)
                 
-                # Progress callback
-                def update_progress(current, total):
-                    st.session_state.current_progress = current
-                    progress_bar.progress(current / total)
-                    status_text.text(f"Processing page {current} of {total}... (Click 'Pause' or 'Stop' to interrupt)")
-                
-                # Status check callback
-                def check_status():
-                    return (st.session_state.is_paused, st.session_state.should_stop)
-                
-                # Wrap _analyze_page to collect results
-                original_analyze_page = analyzer._analyze_page
-                
-                def wrapped_analyze_page(*args, **kwargs):
-                    result = original_analyze_page(*args, **kwargs)
-                    all_suggestions.extend(result)
-                    # Update partial results
-                    if len(all_suggestions) > 0:
-                        st.session_state.partial_results = pd.DataFrame(all_suggestions)
-                    return result
-                
-                analyzer._analyze_page = wrapped_analyze_page
-                
-                # Generate suggestions
-                status_text.text(f"Starting to process {total_pages} pages with {model_choice}...")
-                suggestions_df = analyzer.generate_link_suggestions(
-                    st.session_state.uploaded_data,
-                    max_suggestions_per_page=suggestions_per_page,
-                    progress_callback=update_progress,
-                    status_check_callback=check_status
+                # Download button
+                csv = results_df.to_csv(index=False).encode('utf-8')
+                filename = f"link_suggestions_{st.session_state.current_job_id}.csv"
+                st.download_button(
+                    label=f"📥 Download {results_label} (CSV)",
+                    data=csv,
+                    file_name=filename,
+                    mime="text/csv",
+                    key=f"download_{st.session_state.current_job_id}"
                 )
+        
+        # Show all jobs section
+        st.markdown("---")
+        st.subheader("📋 All Analysis Jobs")
+        
+        all_jobs = job_manager.list_jobs()
+        if all_jobs:
+            for job in all_jobs:
+                job_id = job['job_id']
+                status = job['status']
+                current_page = job.get('current_page', 0)
+                total_pages = job['total_pages']
+                created_at = job['created_at'][:19].replace('T', ' ')
                 
-                # Mark processing as complete
-                st.session_state.is_processing = False
-                
-                if st.session_state.should_stop:
-                    # Processing was stopped by user
-                    st.warning(f"⏹️ Processing stopped by user. Generated {len(suggestions_df)} link suggestions from {st.session_state.current_progress} of {total_pages} pages.")
+                # Job card
+                with st.expander(f"Job {job_id} - {status} ({current_page}/{total_pages} pages) - Created: {created_at}"):
+                    col_a, col_b, col_c = st.columns([2, 1, 1])
                     
-                    if len(suggestions_df) > 0:
-                        # Save to session state
-                        st.session_state.link_suggestions = suggestions_df
-                        st.session_state.partial_results = suggestions_df
-                        
-                        # Save to CSV
-                        filename = analyzer.save_to_csv(suggestions_df, 'link_suggestions_partial.csv')
-                        
-                        st.success(f"✅ Partial results saved!")
-                        
-                        # Show preview
-                        st.subheader("Link Suggestions (Partial)")
-                        st.dataframe(suggestions_df.head(20), use_container_width=True)
-                        
-                        # Download button
-                        csv = suggestions_df.to_csv(index=False).encode('utf-8')
-                        st.download_button(
-                            label="📥 Download Partial Results (CSV)",
-                            data=csv,
-                            file_name=filename,
-                            mime="text/csv",
-                            key="stopped_final_download"
-                        )
-                    else:
-                        st.info("No suggestions were generated before stopping.")
-                else:
-                    # Processing completed normally
-                    progress_bar.progress(1.0)
-                    status_text.text("✅ Processing complete!")
+                    with col_a:
+                        st.write(f"**Status:** {status}")
+                        st.write(f"**Progress:** {current_page}/{total_pages} pages")
+                        if job.get('error'):
+                            st.write(f"**Error:** {job['error']}")
                     
-                    # Save to session state
-                    st.session_state.link_suggestions = suggestions_df
+                    with col_b:
+                        if st.button("Load This Job", key=f"load_{job_id}"):
+                            st.session_state.current_job_id = job_id
+                            st.rerun()
                     
-                    # Save to CSV
-                    filename = analyzer.save_to_csv(suggestions_df)
-                    
-                    st.success(f"✅ Generated {len(suggestions_df)} link suggestions!")
-                    st.balloons()
-                    
-                    # Show preview
-                    st.subheader("Link Suggestions Preview")
-                    st.dataframe(suggestions_df.head(20), use_container_width=True)
-                    
-                    # Download button
-                    csv = suggestions_df.to_csv(index=False).encode('utf-8')
-                    st.download_button(
-                        label="📥 Download Link Suggestions (CSV)",
-                        data=csv,
-                        file_name=filename,
-                        mime="text/csv",
-                        key="complete_final_download"
-                    )
-                
-                # Reset flags
-                st.session_state.should_stop = False
-                st.session_state.is_paused = False
-                
-            except Exception as e:
-                st.session_state.is_processing = False
-                st.session_state.should_stop = False
-                st.session_state.is_paused = False
-                st.error(f"Error generating suggestions: {str(e)}")
-                st.error(traceback.format_exc())
+                    with col_c:
+                        if st.button("Delete Job", key=f"del_{job_id}"):
+                            job_manager.delete_job(job_id)
+                            if st.session_state.current_job_id == job_id:
+                                st.session_state.current_job_id = None
+                            st.rerun()
+        else:
+            st.info("No jobs found. Start a new analysis to begin!")
+
 
 # Tab 3: Results and Analytics
 with tab3:

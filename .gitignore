@@ -38,6 +38,10 @@ demo_*.csv
 # Allow sample files
 !sample_*.csv
 
+# Job data and state
+jobs/
+*.job
+
 # IDE
 .vscode/
 .idea/
