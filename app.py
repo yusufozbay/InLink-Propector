@@ -70,7 +70,7 @@ api_key = st.sidebar.text_input(
 # Model selection
 model_choice = st.sidebar.selectbox(
     "Gemini Model",
-    ["gemini-2.0-flash-exp", "gemini-1.5-pro", "gemini-1.5-flash"],
+    ["gemini-2.5-pro", "gemini-3.0-pro-preview"],
     help="Select the Gemini model to use"
 )
 

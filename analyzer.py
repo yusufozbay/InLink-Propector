@@ -16,13 +16,13 @@ import time
 class LinkAnalyzer:
     """Analyzes content and generates internal linking suggestions using Google Gemini"""
     
-    def __init__(self, api_key: str = None, model_name: str = "gemini-2.0-flash-exp"):
+    def __init__(self, api_key: str = None, model_name: str = "gemini-2.5-pro"):
         """
         Initialize the analyzer
         
         Args:
             api_key: Google API key (if not provided, will use environment variable)
-            model_name: Gemini model to use (default: gemini-2.0-flash-exp, also supports gemini-1.5-pro)
+            model_name: Gemini model to use (default: gemini-2.5-pro, also supports gemini-3.0-pro-preview)
         """
         self.api_key = api_key or os.getenv('GOOGLE_API_KEY')
         if not self.api_key:

@@ -5,7 +5,7 @@ An intelligent internal linking tool that uses Google Gemini AI to suggest relev
 ## Features
 
 - 📤 **CSV Upload**: Upload your website data with URL, H1, Meta Title, and content
-- 🤖 **AI-Powered Analysis**: Uses Google Gemini (2.0 Flash or 1.5 Pro) to generate intelligent internal link suggestions:
+- 🤖 **AI-Powered Analysis**: Uses Google Gemini (2.5 Pro or 3 Pro Preview) to generate intelligent internal link suggestions:
   - Source URL (where to add the link)
   - Anchor Text (exact match or semantically related)
   - Target URL (where the link should point)
@@ -50,7 +50,7 @@ This will open the app in your browser at `http://localhost:8501`
 
 2. **Generate Link Suggestions** (Tab 2):
    - Enter your Google API key (in sidebar)
-   - Select Gemini model (2.0 Flash or 1.5 Pro)
+   - Select Gemini model (2.5 Pro or 3 Pro Preview)
    - Set max suggestions per page
    - Click "Generate Link Suggestions"
    - Wait for AI to analyze your content
@@ -70,7 +70,7 @@ import pandas as pd
 df = pd.read_csv('your_data.csv')
 
 # Initialize analyzer
-analyzer = LinkAnalyzer(api_key='your-google-api-key', model_name='gemini-2.0-flash-exp')
+analyzer = LinkAnalyzer(api_key='your-google-api-key', model_name='gemini-2.5-pro')
 
 # Generate link suggestions
 suggestions_df = analyzer.generate_link_suggestions(df, max_suggestions_per_page=5)
@@ -119,9 +119,8 @@ GOOGLE_API_KEY=your_google_api_key_here
 ### Gemini Models
 
 Available models:
-- `gemini-2.0-flash-exp` (Recommended - Latest, fastest)
-- `gemini-1.5-pro` (More powerful, slower)
-- `gemini-1.5-flash` (Fast, lightweight)
+- `gemini-2.5-pro` (Recommended - Latest, high quality)
+- `gemini-3.0-pro-preview` (Preview of next generation)
 
 ## Requirements
 
@@ -158,8 +157,8 @@ Available models:
 
 Google Gemini API pricing:
 - Free tier available with generous limits
-- Gemini 2.0 Flash: Most cost-effective
-- Gemini 1.5 Pro: Higher cost, better quality
+- Gemini 2.5 Pro: High quality, balanced cost
+- Gemini 3.0 Pro Preview: Preview version, may have different pricing
 
 Estimated costs:
 - 100 pages: ~$0.05-0.15
