@@ -31,10 +31,76 @@ class LinkAnalyzer:
         self.client = genai.Client(api_key=self.api_key)
         self.model_name = model_name
     
+    def _extract_entities(self, url: str, h1: str, meta_title: str) -> List[str]:
+        """
+        Extract key entities from URL, H1, and Meta Title
+        
+        Args:
+            url: Page URL
+            h1: H1 heading
+            meta_title: Meta title
+            
+        Returns:
+            List of extracted entities (keywords/phrases)
+        """
+        entities = []
+        
+        # Extract from URL path (convert hyphens/underscores to spaces, remove domain)
+        # Remove trailing slash and get last path segment
+        url_path = url.rstrip('/').split('/')[-1] if '/' in url else ''
+        # Remove common file extensions
+        url_path = re.sub(r'\.(html?|php|aspx?)$', '', url_path, flags=re.IGNORECASE)
+        # Convert hyphens/underscores to spaces
+        url_words = re.sub(r'[_-]', ' ', url_path).strip()
+        # Only add if it's not empty and doesn't look like a domain
+        if url_words and '.' not in url_words:
+            entities.append(url_words)
+        
+        # Extract from H1
+        if h1 and isinstance(h1, str):
+            entities.append(h1.strip())
+        
+        # Extract from Meta Title (remove site name if present)
+        if meta_title and isinstance(meta_title, str):
+            # Remove common separators and site names (fixed regex pattern)
+            title_clean = re.split(r'[|–—]|-', meta_title)[0].strip()
+            if title_clean:
+                entities.append(title_clean)
+        
+        return entities
+    
+    def _build_url_database(self, df: pd.DataFrame) -> str:
+        """
+        Build a complete database of all URLs with their metadata for Gemini to read
+        
+        Args:
+            df: DataFrame with all pages data
+            
+        Returns:
+            Formatted string with all URLs and their metadata
+        """
+        # Format as a clear, readable database for Gemini
+        formatted_db = "COMPLETE URL DATABASE (Read this first):\n"
+        formatted_db += "=" * 80 + "\n\n"
+        
+        for i, (idx, data) in enumerate(df.iterrows(), 1):
+            url = data['URL']
+            h1 = data['H1'] if pd.notna(data['H1']) else ''
+            meta_title = data['Meta Title'] if pd.notna(data['Meta Title']) else ''
+            
+            formatted_db += f"{i}. URL: {url}\n"
+            formatted_db += f"   H1: {h1}\n"
+            formatted_db += f"   Meta Title: {meta_title}\n"
+            formatted_db += "\n"
+        
+        formatted_db += "=" * 80 + "\n"
+        
+        return formatted_db
+    
     def generate_link_suggestions(self, df: pd.DataFrame, max_suggestions_per_page: int = 5, 
                                   progress_callback=None, status_check_callback=None) -> pd.DataFrame:
         """
-        Generate internal link suggestions for pages
+        Generate internal link suggestions for pages based on content analysis
         
         Args:
             df: DataFrame with data (URL, H1, Meta Title, Content)
@@ -43,18 +109,12 @@ class LinkAnalyzer:
             status_check_callback: Optional callback function that returns tuple (should_pause, should_stop)
             
         Returns:
-            DataFrame with columns: Source URL, Anchor Text, Target URL
+            DataFrame with columns: Source URL, Anchor Text, Target URL, Entity Match
         """
         suggestions = []
         
-        # Create a summary of all pages for context
-        pages_summary = []
-        for idx, row in df.iterrows():
-            pages_summary.append({
-                'url': row['URL'],
-                'title': row['Meta Title'] or row['H1'],
-                'content_preview': row['Content'][:200]
-            })
+        # CRITICAL: Build complete URL database first - Gemini must read ALL URLs before processing
+        url_database = self._build_url_database(df)
         
         total_pages = len(df)
         
@@ -79,15 +139,17 @@ class LinkAnalyzer:
                     break
             
             source_url = source_row['URL']
-            source_title = source_row['Meta Title'] or source_row['H1']
-            source_content = source_row['Content']
+            source_h1 = source_row['H1'] if pd.notna(source_row['H1']) else ''
+            source_meta_title = source_row['Meta Title'] if pd.notna(source_row['Meta Title']) else ''
+            source_content = source_row['Content'] if pd.notna(source_row['Content']) else ''
             
-            # Generate suggestions for this source page
+            # Generate suggestions for this source page (content-based entity extraction)
             page_suggestions = self._analyze_page(
                 source_url=source_url,
-                source_title=source_title,
+                source_h1=source_h1,
+                source_meta_title=source_meta_title,
                 source_content=source_content,
-                all_pages=pages_summary,
+                url_database=url_database,
                 max_suggestions=max_suggestions_per_page
             )
             
@@ -104,53 +166,95 @@ class LinkAnalyzer:
         result_df = pd.DataFrame(suggestions)
         return result_df
     
-    def _analyze_page(self, source_url: str, source_title: str, source_content: str, 
-                     all_pages: List[Dict], max_suggestions: int) -> List[Dict]:
+    def _analyze_page(self, source_url: str, source_h1: str, source_meta_title: str, 
+                     source_content: str, url_database: str, max_suggestions: int) -> List[Dict]:
         """
-        Analyze a single page and generate link suggestions
+        Analyze a single page and generate content-based link suggestions
+        
+        Args:
+            source_url: URL of the source page
+            source_h1: H1 of the source page
+            source_meta_title: Meta title of the source page
+            source_content: Content of the source page
+            url_database: Complete formatted database of all URLs
+            max_suggestions: Maximum number of suggestions to generate
         
         Returns:
-            List of dicts with source_url, anchor_text, target_url
+            List of dicts with source_url, anchor_text, target_url, entity_match
         """
-        # Prepare the context with available pages
-        pages_context = "\n".join([
-            f"- URL: {p['url']}\n  Title: {p['title']}\n  Preview: {p['content_preview'][:150]}..."
-            for p in all_pages[:50]  # Limit to prevent token overflow
-        ])
         
-        prompt = f"""You are an SEO expert specializing in internal linking strategies. Analyze the following page and suggest relevant internal links.
+        prompt = f"""{url_database}
 
-SOURCE PAGE:
-URL: {source_url}
-Title: {source_title}
-Content: {source_content}
+IMPORTANT INSTRUCTIONS - READ CAREFULLY:
 
-AVAILABLE PAGES FOR LINKING:
-{pages_context}
+1. You have been provided with the COMPLETE URL DATABASE above containing ALL available pages with their URLs, H1 headings, and Meta Titles.
+2. You MUST use ONLY the URLs from this database when suggesting internal links.
+3. **CRITICAL**: Internal link suggestions MUST be based on CONTENT ANALYSIS and ENTITY EXTRACTION from the source page content.
 
-Task: Identify up to {max_suggestions} opportunities to add internal links from the source page to other relevant pages on the website.
+WORKFLOW:
+Step 1: Read and understand the URL database above to know ALL available target pages.
+Step 2: Analyze the SOURCE PAGE CONTENT below to extract key entities, topics, and concepts.
+Step 3: Match entities from the content with target pages in the database.
+Step 4: Create anchor text that contains entities extracted from the content that semantically match the target page.
 
-For each suggestion, provide:
-1. Anchor text: The exact phrase from the source content OR a semantically related phrase that would work as anchor text
-2. Target URL: The URL of the page to link to
-3. Relevance: Brief explanation of why this link makes sense
+NOW ANALYZE THIS SOURCE PAGE:
+
+SOURCE PAGE DETAILS:
+- URL: {source_url}
+- H1: {source_h1}
+- Meta Title: {source_meta_title}
+- Content: {source_content}
+
+YOUR TASK:
+
+1. **Analyze the content** and extract key entities, topics, and concepts mentioned in it.
+2. **Match these entities** with target pages from the URL database based on semantic relevance.
+3. **Create anchor text** using entities/phrases found in the content that match the target page topic.
+4. Generate up to {max_suggestions} high-quality internal link suggestions.
+
+CRITICAL REQUIREMENTS FOR EACH SUGGESTION:
+
+1. **Content-Based Entity Extraction**: 
+   - Extract entities FROM THE CONTENT of the source page
+   - Use these content entities as anchor text
+   - Anchor text must be a phrase that actually appears or could naturally appear in the content
+   
+2. **Entity-Target Matching**: 
+   - The anchor text entity must semantically match the target page's topic (based on URL, H1, or Meta Title)
+   - For example, if content mentions "link building strategies" and target page is about "Link Building Tactics", this is a good match
+   
+3. **Anchor Text Quality**: 
+   - Must be natural and contextual to the source content
+   - Should be 2-6 words long
+   - Must be relevant to both source content and target page
+   
+4. **Target URL Validation**:
+   - MUST be from the URL database provided above
+   - MUST be different from the source URL
+   - MUST be semantically relevant to the content entities
 
 Return your response as a JSON array with this structure:
 [
   {{
-    "anchor_text": "relevant keyword phrase",
+    "anchor_text": "entity/phrase extracted from content",
     "target_url": "https://example.com/target-page",
-    "relevance": "Brief explanation"
+    "entity_match": "how the anchor text entity matches the target page topic",
+    "relevance": "Brief explanation of the connection"
   }}
 ]
 
-Focus on:
-- Semantic relevance between content
-- Natural anchor text that fits the context
-- High-value internal links that help users and SEO
-- Exact match keywords or semantically related terms
+EXAMPLE (for illustration only):
+If source content discusses "SEO strategies" and mentions "link building" and target page is about "Link Building Tactics":
+[
+  {{
+    "anchor_text": "link building strategies",
+    "target_url": "https://example.com/link-building",
+    "entity_match": "Content entity 'link building' matches target topic 'Link Building Tactics'",
+    "relevance": "Source content discusses link building; target page provides tactics for it"
+  }}
+]
 
-Return ONLY the JSON array, no additional text."""
+Return ONLY the JSON array, no additional text or formatting."""
 
         try:
             response = self.client.models.generate_content(
@@ -172,15 +276,19 @@ Return ONLY the JSON array, no additional text."""
                     print(f"Failed to parse JSON from response for {source_url}")
                     return []
             
-            # Format the suggestions
+            # Format the suggestions with entity match information
             formatted_suggestions = []
             for item in suggestions_data:
                 if isinstance(item, dict) and 'anchor_text' in item and 'target_url' in item:
-                    formatted_suggestions.append({
+                    suggestion = {
                         'Source URL': source_url,
                         'Anchor Text': item['anchor_text'],
                         'Target URL': item['target_url']
-                    })
+                    }
+                    # Add entity match if available
+                    if 'entity_match' in item:
+                        suggestion['Entity Match'] = item['entity_match']
+                    formatted_suggestions.append(suggestion)
             
             return formatted_suggestions[:max_suggestions]
             
