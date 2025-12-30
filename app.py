@@ -8,6 +8,7 @@ import pandas as pd
 from analyzer import LinkAnalyzer
 import os
 from dotenv import load_dotenv
+import traceback
 
 # Load environment variables
 load_dotenv()
@@ -360,7 +361,6 @@ with tab2:
                 st.session_state.should_stop = False
                 st.session_state.is_paused = False
                 st.error(f"Error generating suggestions: {str(e)}")
-                import traceback
                 st.error(traceback.format_exc())
 
 # Tab 3: Results and Analytics

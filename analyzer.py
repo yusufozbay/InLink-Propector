@@ -68,9 +68,9 @@ class LinkAnalyzer:
                     # Stop processing immediately
                     break
                 
-                # Wait while paused
+                # Wait while paused (with reasonable delay to avoid busy wait)
                 while should_pause:
-                    time.sleep(0.5)
+                    time.sleep(1.0)  # Sleep for 1 second between checks
                     should_pause, should_stop = status_check_callback()
                     if should_stop:
                         break
