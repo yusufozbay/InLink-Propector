@@ -92,7 +92,8 @@ class TestEntityExtraction(unittest.TestCase):
         self.assertIn('SEO Guide - Best Practices | Example', url_database)
         self.assertIn('https://example.com/content-marketing', url_database)
         self.assertIn('Content Marketing Strategies', url_database)
-        self.assertIn('Key Entities:', url_database)
+        # Should NOT include pre-extracted entities (Gemini extracts from content now)
+        self.assertNotIn('Key Entities:', url_database)
     
     def test_extract_entities_handles_none(self):
         """Test entity extraction handles None values"""

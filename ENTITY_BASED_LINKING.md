@@ -2,40 +2,18 @@
 
 ## Overview
 
-This implementation adds entity-based internal link mapping to InLink-Prospector, ensuring that all link suggestions are based on entities extracted from page metadata and that Gemini has complete knowledge of ALL URLs before generating suggestions.
+This implementation adds content-based entity extraction for internal link mapping in InLink-Prospector. Gemini analyzes the page content to extract entities dynamically, ensuring that all link suggestions are based on actual content analysis rather than pre-extracted metadata.
 
 ## Key Changes
 
-### 1. Entity Extraction
+### 1. Complete URL Database Pre-Reading
 
-Entities are now extracted from three sources for each page:
-
-1. **URL Path**: 
-   - Extracts the last segment of the URL path
-   - Converts hyphens and underscores to spaces
-   - Removes common file extensions (.html, .php, .aspx)
-   - Handles trailing slashes
-   - Filters out domain-only URLs
-   - Example: `https://example.com/seo-guide/` → `"seo guide"`
-
-2. **H1 Heading**:
-   - Uses the complete H1 text as an entity
-   - Example: `"Complete SEO Guide 2024"`
-
-3. **Meta Title**:
-   - Extracts the main title before separators (|, –, —, -)
-   - Removes site name suffixes
-   - Example: `"SEO Guide - Best Practices | Example"` → `"SEO Guide"`
-
-### 2. Complete URL Database
-
-Before processing any pages, the system now:
+Before processing any pages, the system:
 
 1. **Builds a Complete Database**: Creates a formatted database of ALL URLs with their:
    - URL
    - H1 heading
-   - Meta title
-   - Extracted entities
+   - Meta Title
 
 2. **Pre-reads All URLs**: This database is provided to Gemini at the start of EVERY prompt, ensuring:
    - Gemini knows ALL available URLs before suggesting links
@@ -44,51 +22,72 @@ Before processing any pages, the system now:
 
 3. **Formatted Output**: The database is clearly formatted with headers and separators for easy reading by Gemini.
 
-### 3. Entity-Based Mapping
+### 2. Content-Based Entity Extraction
 
-The updated prompt enforces strict entity-based requirements:
+The updated approach uses a two-step process:
 
-1. **Anchor Text Requirement**: 
-   - MUST contain an entity from the target page
-   - Can be exact match OR semantically related
-   - Examples:
-     - Exact: "SEO Guide" (matches entity "SEO Guide")
-     - Semantic: "search engine optimization guide" (matches entity "SEO Guide")
+**Step 1: Read URL Database**
+- Gemini receives the complete URL database with URL + H1 + Meta Title
+- This provides context about ALL available target pages
 
-2. **Target URL Validation**:
-   - MUST be from the URL database
-   - MUST be different from source URL
-   - MUST be semantically relevant to source content
+**Step 2: Analyze Content for Entities**
+- Gemini analyzes the **source page content** to extract entities, topics, and concepts
+- These content-based entities are used to create anchor text
+- Entities are matched with target pages based on semantic relevance
+
+This approach ensures:
+- Anchor text is based on actual content, not pre-extracted metadata
+- More accurate and contextual link suggestions
+- Entities are extracted by AI analysis, not simple text parsing
+
+### 3. Entity-Target Matching
+
+The system enforces strict requirements:
+
+1. **Content Analysis**: 
+   - Gemini extracts entities FROM the content
+   - Uses these entities as anchor text
+   - Anchor text must be natural to the content context
+
+2. **Semantic Matching**:
+   - Content entities are matched with target pages
+   - Matching is based on semantic relevance between content and target page topic
+   - Example: Content mentions "link building strategies" → matches target page "Link Building Tactics"
 
 3. **Output Enhancement**:
-   - Includes "Entity Match" field showing which entity was matched
-   - Helps verify entity-based mapping is working correctly
+   - Includes "Entity Match" field showing how content entity matches target topic
+   - Helps verify the matching is working correctly
 
 ## Code Structure
 
-### New Methods in `LinkAnalyzer`:
+### Updated Methods in `LinkAnalyzer`:
 
-1. **`_extract_entities(url, h1, meta_title)`**
-   - Extracts entities from URL, H1, and Meta Title
-   - Returns list of entity strings
-   - Handles edge cases (trailing slashes, file extensions, None values)
-
-2. **`_build_url_database(df)`**
+1. **`_build_url_database(df)`**
    - Builds complete formatted database of all URLs
-   - Includes all metadata and entities
+   - Includes URL, H1, and Meta Title (no pre-extracted entities)
    - Returns formatted string for Gemini prompt
 
-### Updated Methods:
-
-1. **`generate_link_suggestions()`**
-   - Now builds URL database FIRST (before processing any pages)
+2. **`generate_link_suggestions()`**
+   - Builds URL database FIRST (before processing any pages)
    - Passes database to each page analysis
    - Maintains compatibility with existing features (pause/stop)
 
-2. **`_analyze_page()`**
-   - Updated signature to include URL database and entities
-   - Enhanced prompt with entity-based requirements
-   - Returns suggestions with optional Entity Match field
+3. **`_analyze_page()`**
+   - Updated to use content-based entity extraction
+   - Receives complete URL database
+   - Prompts Gemini to:
+     1. Read the URL database
+     2. Analyze source content for entities
+     3. Match content entities with target pages
+     4. Generate suggestions with entity-based anchors
+   - Returns suggestions with Entity Match field
+
+### Preserved Methods:
+
+1. **`_extract_entities(url, h1, meta_title)`**
+   - Still available for potential utility purposes
+   - Not used in the main suggestion workflow
+   - Kept for backward compatibility
 
 ## Usage Example
 
@@ -102,52 +101,92 @@ df = pd.read_csv('your_data.csv')
 # Initialize analyzer
 analyzer = LinkAnalyzer(api_key='your-api-key', model_name='gemini-2.5-pro')
 
-# Generate entity-based link suggestions
+# Generate content-based link suggestions
 # The analyzer will:
-# 1. Extract entities from all pages
-# 2. Build complete URL database
-# 3. Pass database to Gemini BEFORE processing
-# 4. Generate suggestions with entity-based anchors
+# 1. Build complete URL database (URL + H1 + Meta Title)
+# 2. Pass database to Gemini BEFORE processing
+# 3. Gemini analyzes CONTENT to extract entities
+# 4. Gemini matches content entities with target pages
+# 5. Generate suggestions with content-based anchors
 suggestions_df = analyzer.generate_link_suggestions(df, max_suggestions_per_page=5)
 
 # Results include:
 # - Source URL
-# - Anchor Text (contains entity from target page)
+# - Anchor Text (extracted from content analysis)
 # - Target URL
-# - Entity Match (optional, shows which entity was matched)
+# - Entity Match (how content entity matches target topic)
+```
+
+## How It Works
+
+### Example Workflow:
+
+**URL Database (provided to Gemini first):**
+```
+1. URL: https://example.com/seo-guide
+   H1: Complete SEO Guide 2024
+   Meta Title: SEO Guide - Best Practices
+
+2. URL: https://example.com/link-building
+   H1: Link Building Tactics
+   Meta Title: Link Building for SEO Success
+
+... (all URLs included)
+```
+
+**Source Page Content Analysis:**
+```
+Content: "SEO is crucial for online visibility. This guide covers keyword 
+research, link building strategies, and technical optimization..."
+
+Gemini extracts entities from content:
+- "SEO"
+- "keyword research" 
+- "link building strategies"
+- "technical optimization"
+```
+
+**Matching & Suggestion:**
+```json
+{
+  "anchor_text": "link building strategies",
+  "target_url": "https://example.com/link-building",
+  "entity_match": "Content entity 'link building' matches target 'Link Building Tactics'",
+  "relevance": "Source discusses link building; target provides tactics"
+}
 ```
 
 ## Testing
 
 Comprehensive tests verify:
 
-1. **Entity Extraction**:
-   - Extracts from URL, H1, Meta Title
-   - Handles trailing slashes
-   - Removes file extensions
-   - Splits meta title on separators
-   - Handles None/missing values
-
-2. **URL Database Building**:
-   - Includes all URLs
-   - Contains all metadata
+1. **URL Database Building**:
+   - Includes all URLs with H1 and Meta Title
+   - Does NOT include pre-extracted entities
    - Properly formatted
 
+2. **Entity Extraction Method**:
+   - Still available and functional
+   - Not used in main workflow
+   - Can extract from URL, H1, Meta Title
+
 3. **Backward Compatibility**:
-   - All existing tests still pass
-   - Existing features (pause/stop) still work
+   - All existing tests pass
+   - Existing features (pause/stop) work
 
 ## Benefits
 
-1. **Entity-Based Quality**: All link suggestions are based on entities, ensuring relevance
-2. **Complete Context**: Gemini has ALL URLs available, preventing missing or incorrect suggestions
-3. **Semantic Matching**: Supports both exact and semantic entity matches for flexibility
-4. **100% Reliable**: No partial context or guesswork - Gemini knows the complete URL database
-5. **Transparency**: Entity Match field shows which entity was matched for verification
+1. **Content-Based Analysis**: Entities are extracted from actual content by Gemini, not pre-parsed
+2. **Complete Context**: Gemini has ALL URLs available before processing
+3. **Semantic Matching**: Intelligent matching between content entities and target pages
+4. **Natural Anchor Text**: Anchor text is based on content, ensuring it fits naturally
+5. **100% Reliable**: Complete URL database prevents missing or incorrect target URLs
+6. **Transparency**: Entity Match field shows the connection between content and target
 
 ## Requirements Met
 
-✅ Internal link opportunities are based on Entities  
-✅ Entity must be in suggested anchor text (exact or semantic match)  
 ✅ Gemini reads ALL URLs (URL + H1 + Meta Title) BEFORE starting to map  
-✅ Gemini knows complete URL database for 100% reliable suggestions
+✅ Gemini analyzes CONTENT to extract entities  
+✅ Entity extraction happens during content analysis, not pre-processing  
+✅ Anchor text is based on content entities that match target page topics  
+✅ 100% reliable suggestions with complete URL database context
