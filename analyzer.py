@@ -83,11 +83,10 @@ class LinkAnalyzer:
         formatted_db = "COMPLETE URL DATABASE (Read this first):\n"
         formatted_db += "=" * 80 + "\n\n"
         
-        for i, row in enumerate(df.iterrows(), 1):
-            idx, row = row
-            url = row['URL']
-            h1 = row['H1'] if pd.notna(row['H1']) else ''
-            meta_title = row['Meta Title'] if pd.notna(row['Meta Title']) else ''
+        for i, (idx, data) in enumerate(df.iterrows(), 1):
+            url = data['URL']
+            h1 = data['H1'] if pd.notna(data['H1']) else ''
+            meta_title = data['Meta Title'] if pd.notna(data['Meta Title']) else ''
             
             formatted_db += f"{i}. URL: {url}\n"
             formatted_db += f"   H1: {h1}\n"
