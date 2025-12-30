@@ -35,7 +35,7 @@ import pandas as pd
 df = pd.read_csv('your_data.csv')
 
 # Initialize analyzer with Google Gemini
-analyzer = LinkAnalyzer(api_key='your-google-api-key', model_name='gemini-2.0-flash-exp')
+analyzer = LinkAnalyzer(api_key='your-google-api-key', model_name='gemini-2.5-pro')
 
 # Generate link suggestions
 suggestions_df = analyzer.generate_link_suggestions(df, max_suggestions_per_page=5)
@@ -61,7 +61,7 @@ analyzer.save_to_csv(suggestions_df, 'link_suggestions.csv')
 
 1. Go to the **"Generate Links"** tab
 2. Enter your Google API key in the sidebar (or set it in `.env`)
-3. Select the Gemini model (2.0 Flash recommended)
+3. Select the Gemini model (2.5 Pro recommended)
 4. Set the maximum number of suggestions per page (default: 5)
 5. Click **"Generate Link Suggestions"**
 6. Wait for the AI to analyze your content (this may take several minutes)
@@ -110,13 +110,12 @@ https://example.com/page1,another link,https://example.com/page3
 - More pages = better link suggestions (more opportunities)
 
 ### Model Selection
-- **gemini-2.0-flash-exp**: Best for speed and cost (recommended)
-- **gemini-1.5-pro**: Better quality, higher cost, slower
-- **gemini-1.5-flash**: Fast and lightweight
+- **gemini-2.5-pro**: Best quality, recommended for most use cases
+- **gemini-3.0-pro-preview**: Preview of next generation model
 
 ### API Costs
 - Google Gemini has a free tier with generous limits
-- Gemini 2.0 Flash: Most cost-effective option
+- Gemini 2.5 Pro: High quality, balanced cost
 - Approximately $0.05-0.15 per 100 pages
 - For 1000 pages: ~$0.50-1.50
 - Much cheaper than OpenAI
@@ -155,7 +154,7 @@ pip install -r requirements.txt
 ### Customize Analysis
 
 Edit `analyzer.py` to:
-- Change the AI model (default: gemini-2.0-flash-exp)
+- Change the AI model (default: gemini-2.5-pro)
 - Adjust the prompt for different link strategies
 - Modify suggestions per page
 
