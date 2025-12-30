@@ -89,7 +89,7 @@ with tab1:
         <li><b>URL</b> - URL Address of the page</li>
         <li><b>H1</b> - H1 Heading</li>
         <li><b>Meta Title</b> - Meta Title tag</li>
-        <li><b>Content (First 500 chars)</b> - First 500 words of main content</li>
+        <li><b>Content</b> - First 500 words of main content</li>
     </ul>
     </div>
     """, unsafe_allow_html=True)
@@ -98,7 +98,7 @@ with tab1:
     uploaded_file = st.file_uploader(
         "Upload CSV file with your website data",
         type=['csv'],
-        help="CSV must have columns: URL, H1, Meta Title, Content (First 500 chars)"
+        help="CSV must have columns: URL, H1, Meta Title, Content"
     )
     
     if uploaded_file is not None:
@@ -106,12 +106,12 @@ with tab1:
             df = pd.read_csv(uploaded_file)
             
             # Validate required columns
-            required_columns = ['URL', 'H1', 'Meta Title', 'Content (First 500 chars)']
+            required_columns = ['URL', 'H1', 'Meta Title', 'Content']
             missing_columns = [col for col in required_columns if col not in df.columns]
             
             if missing_columns:
                 st.error(f"❌ Missing required columns: {', '.join(missing_columns)}")
-                st.info("Please ensure your CSV has columns: URL, H1, Meta Title, Content (First 500 chars)")
+                st.info("Please ensure your CSV has columns: URL, H1, Meta Title, Content")
             else:
                 st.session_state.uploaded_data = df
                 st.session_state.data_loaded = True
@@ -139,7 +139,7 @@ with tab1:
         'URL': ['https://example.com/page1', 'https://example.com/page2'],
         'H1': ['Complete SEO Guide', 'Content Marketing'],
         'Meta Title': ['SEO Guide - Best Practices', 'Content Marketing Guide'],
-        'Content (First 500 chars)': [
+        'Content': [
             'Search Engine Optimization (SEO) is crucial for online visibility...',
             'Content marketing is the art of creating valuable content...'
         ]
