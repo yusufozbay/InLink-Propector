@@ -1,10 +1,11 @@
 """
 LLM Analyzer Module for InLink-Prospector
-Uses LLM to generate internal linking suggestions
+Uses Google Gemini to generate internal linking suggestions
 """
 
 import pandas as pd
-from openai import OpenAI
+from google import genai
+from google.genai import types
 import os
 from typing import List, Dict
 import json
@@ -13,27 +14,29 @@ import time
 
 
 class LinkAnalyzer:
-    """Analyzes crawled content and generates internal linking suggestions using LLM"""
+    """Analyzes content and generates internal linking suggestions using Google Gemini"""
     
-    def __init__(self, api_key: str = None):
+    def __init__(self, api_key: str = None, model_name: str = "gemini-2.0-flash-exp"):
         """
         Initialize the analyzer
         
         Args:
-            api_key: OpenAI API key (if not provided, will use environment variable)
+            api_key: Google API key (if not provided, will use environment variable)
+            model_name: Gemini model to use (default: gemini-2.0-flash-exp, also supports gemini-1.5-pro)
         """
-        self.api_key = api_key or os.getenv('OPENAI_API_KEY')
+        self.api_key = api_key or os.getenv('GOOGLE_API_KEY')
         if not self.api_key:
-            raise ValueError("OpenAI API key is required. Set OPENAI_API_KEY environment variable or pass it directly.")
+            raise ValueError("Google API key is required. Set GOOGLE_API_KEY environment variable or pass it directly.")
         
-        self.client = OpenAI(api_key=self.api_key)
+        self.client = genai.Client(api_key=self.api_key)
+        self.model_name = model_name
     
     def generate_link_suggestions(self, df: pd.DataFrame, max_suggestions_per_page: int = 5) -> pd.DataFrame:
         """
-        Generate internal link suggestions for crawled pages
+        Generate internal link suggestions for pages
         
         Args:
-            df: DataFrame with crawled data (URL, H1, Meta Title, Content)
+            df: DataFrame with data (URL, H1, Meta Title, Content)
             max_suggestions_per_page: Maximum number of link suggestions per source page
             
         Returns:
@@ -123,18 +126,12 @@ Focus on:
 Return ONLY the JSON array, no additional text."""
 
         try:
-            response = self.client.chat.completions.create(
-                model="gpt-3.5-turbo",
-                messages=[
-                    {"role": "system", "content": "You are an SEO expert. Always respond with valid JSON only."},
-                    {"role": "user", "content": prompt}
-                ],
-                temperature=0.7,
-                max_tokens=1000
+            response = self.client.models.generate_content(
+                model=self.model_name,
+                contents=prompt
             )
             
-            # Parse the response
-            response_text = response.choices[0].message.content.strip()
+            response_text = response.text.strip()
             
             # Try to extract JSON from the response
             try:
