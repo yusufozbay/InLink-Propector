@@ -46,9 +46,14 @@ class LinkAnalyzer:
         entities = []
         
         # Extract from URL path (convert hyphens/underscores to spaces, remove domain)
-        url_path = url.split('/')[-1] if '/' in url else ''
+        # Remove trailing slash and get last path segment
+        url_path = url.rstrip('/').split('/')[-1] if '/' in url else ''
+        # Remove common file extensions
+        url_path = re.sub(r'\.(html?|php|aspx?)$', '', url_path, flags=re.IGNORECASE)
+        # Convert hyphens/underscores to spaces
         url_words = re.sub(r'[_-]', ' ', url_path).strip()
-        if url_words:
+        # Only add if it's not empty and doesn't look like a domain
+        if url_words and '.' not in url_words:
             entities.append(url_words)
         
         # Extract from H1
@@ -57,8 +62,8 @@ class LinkAnalyzer:
         
         # Extract from Meta Title (remove site name if present)
         if meta_title and isinstance(meta_title, str):
-            # Remove common separators and site names
-            title_clean = re.split(r'[|\-–—]', meta_title)[0].strip()
+            # Remove common separators and site names (fixed regex pattern)
+            title_clean = re.split(r'[|–—]|-', meta_title)[0].strip()
             if title_clean:
                 entities.append(title_clean)
         
