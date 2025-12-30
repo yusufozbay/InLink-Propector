@@ -29,9 +29,14 @@ wheels/
 # Streamlit
 .streamlit/
 
-# CSV outputs
-*.csv
+# CSV outputs (but keep sample files)
+*_output.csv
+*_suggestions.csv
 crawl_output/
+demo_*.csv
+
+# Allow sample files
+!sample_*.csv
 
 # IDE
 .vscode/
