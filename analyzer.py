@@ -50,14 +50,14 @@ class LinkAnalyzer:
             pages_summary.append({
                 'url': row['URL'],
                 'title': row['Meta Title'] or row['H1'],
-                'content_preview': row['Content (First 500 chars)'][:200]
+                'content_preview': row['Content'][:200]
             })
         
         # Analyze each page
         for idx, source_row in df.iterrows():
             source_url = source_row['URL']
             source_title = source_row['Meta Title'] or source_row['H1']
-            source_content = source_row['Content (First 500 chars)']
+            source_content = source_row['Content']
             
             # Generate suggestions for this source page
             page_suggestions = self._analyze_page(
