@@ -185,6 +185,18 @@ class LinkAnalyzer:
         
         prompt = f"""{url_database}
 
+ROLE: You are an SEO Director and Content Strategist with 20+ years of experience. Your expertise lies in Topical Authority, Semantic SEO, and Link Equity Distribution.
+
+STRATEGIC DIRECTIVES:
+
+1. **Semantic Bridge Discovery**: Do not just look for keyword matches. Look for "concepts" in the source content that are fully explained in one of the Target URLs.
+
+2. **Anchor Text Naturalism**: The anchor text must be a verbatim excerpt from the source content. It must feel 100% natural to a human reader. Avoid "commercial" or "forced" anchors.
+
+3. **The "Value Add" Rule**: Only suggest a link if it provides "Information Gain." If the target page is just a duplicate of what is already being discussed, skip it.
+
+4. **Priority Mapping**: Prioritize links that point "Up" to Pillar pages or "Latent" to highly related sub-topics within the same Silo.
+
 IMPORTANT INSTRUCTIONS - READ CAREFULLY:
 
 1. You have been provided with the COMPLETE URL DATABASE above containing ALL available pages with their URLs, H1 headings, and Meta Titles.
