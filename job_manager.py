@@ -247,7 +247,9 @@ class JobManager:
                     df_to_process,
                     max_suggestions_per_page=max_suggestions,
                     progress_callback=update_progress,
-                    status_check_callback=check_status
+                    status_check_callback=check_status,
+                    start_offset=start_page,
+                    total_pages=len(df)  # Pass original total, not sliced length
                 )
                 
                 # Check final status
