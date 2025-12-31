@@ -99,8 +99,7 @@ class TestRaceCondition(unittest.TestCase):
         job_file = os.path.join(self.test_jobs_dir, f"{job_id}.json")
         
         # Create an empty file
-        with open(job_file, 'w') as f:
-            f.write('')
+        open(job_file, 'w').close()
         
         # Should return None instead of raising JSONDecodeError
         job_data = self.job_manager.get_job(job_id)
