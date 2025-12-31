@@ -7,6 +7,7 @@ import json
 import os
 import time
 import threading
+import tempfile
 from datetime import datetime
 from typing import Dict, List, Optional, Callable
 from enum import Enum
@@ -78,8 +79,19 @@ class JobManager:
         if not os.path.exists(job_file):
             return None
         
-        with open(job_file, 'r') as f:
-            return json.load(f)
+        try:
+            with open(job_file, 'r') as f:
+                content = f.read()
+                if not content.strip():
+                    # File is empty, likely being written to
+                    return None
+                return json.loads(content)
+        except json.JSONDecodeError:
+            # File is corrupted or being written to, return None
+            return None
+        except Exception:
+            # Other errors (e.g., file deleted during read)
+            return None
     
     def update_job(self, job_id: str, updates: Dict):
         """
@@ -332,12 +344,38 @@ class JobManager:
     
     def _save_job(self, job_id: str, job_data: Dict):
         """
-        Save job metadata to file
+        Save job metadata to file using atomic write to prevent race conditions
         
         Args:
             job_id: Job identifier
             job_data: Job metadata dictionary
         """
+        # Ensure directory exists
+        os.makedirs(self.jobs_dir, exist_ok=True)
+        
         job_file = os.path.join(self.jobs_dir, f"{job_id}.json")
-        with open(job_file, 'w') as f:
-            json.dump(job_data, f, indent=2)
+        
+        # Use a unique temporary file to avoid conflicts between concurrent writes
+        # NamedTemporaryFile with delete=False creates a unique temp file
+        try:
+            with tempfile.NamedTemporaryFile(
+                mode='w', 
+                dir=self.jobs_dir, 
+                prefix=f'{job_id}_', 
+                suffix='.tmp',
+                delete=False
+            ) as temp_file:
+                temp_path = temp_file.name
+                json.dump(job_data, temp_file, indent=2)
+            
+            # Atomically rename temporary file to target file
+            # This ensures readers never see a partially written file
+            os.replace(temp_path, job_file)
+        except Exception:
+            # Clean up temp file if it exists and rename failed
+            if 'temp_path' in locals() and os.path.exists(temp_path):
+                try:
+                    os.remove(temp_path)
+                except Exception:
+                    pass
+            raise
