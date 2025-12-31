@@ -197,6 +197,8 @@ STRATEGIC DIRECTIVES:
 
 4. **Priority Mapping**: Prioritize links that point "Up" to Pillar pages or "Latent" to highly related sub-topics within the same Silo.
 
+5. **Strictly One Link Per Target**: You may only suggest one link from this Source URL to any specific Target URL. If you find multiple opportunities for the same Target, select the one with the highest semantic relevance.
+
 IMPORTANT INSTRUCTIONS - READ CAREFULLY:
 
 1. You have been provided with the COMPLETE URL DATABASE above containing ALL available pages with their URLs, H1 headings, and Meta Titles.
