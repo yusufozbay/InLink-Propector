@@ -98,7 +98,8 @@ class LinkAnalyzer:
         return formatted_db
     
     def generate_link_suggestions(self, df: pd.DataFrame, max_suggestions_per_page: int = 5, 
-                                  progress_callback=None, status_check_callback=None) -> pd.DataFrame:
+                                  progress_callback=None, status_check_callback=None,
+                                  start_offset: int = 0, total_pages: int = None) -> pd.DataFrame:
         """
         Generate internal link suggestions for pages based on content analysis
         
@@ -107,6 +108,8 @@ class LinkAnalyzer:
             max_suggestions_per_page: Maximum number of link suggestions per source page
             progress_callback: Optional callback function to report progress (page_index, total_pages)
             status_check_callback: Optional callback function that returns tuple (should_pause, should_stop)
+            start_offset: Offset for progress reporting (used when resuming from checkpoint)
+            total_pages: Total number of pages in original dataset (used when resuming from checkpoint)
             
         Returns:
             DataFrame with columns: Source URL, Anchor Text, Target URL, Entity Match
@@ -116,10 +119,17 @@ class LinkAnalyzer:
         # CRITICAL: Build complete URL database first - Gemini must read ALL URLs before processing
         url_database = self._build_url_database(df)
         
-        total_pages = len(df)
+        # Use provided total_pages or calculate from current df
+        if total_pages is None:
+            total_pages = len(df)
+        
+        # Track sequential page number for progress reporting
+        page_counter = start_offset
         
         # Analyze each page
         for idx, source_row in df.iterrows():
+            # Increment page counter at start of iteration
+            page_counter += 1
             # Check if we should pause or stop
             if status_check_callback:
                 should_pause, should_stop = status_check_callback()
@@ -157,7 +167,7 @@ class LinkAnalyzer:
             
             # Report progress if callback provided
             if progress_callback:
-                progress_callback(idx + 1, total_pages)
+                progress_callback(page_counter, total_pages)
             
             # Add delay to avoid rate limits
             time.sleep(0.5)
